@@ -1,12 +1,135 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
   <head>
     <meta charset="utf-8" />
-    <title>Waymo Safety Viz</title>
+    <title>Waymo Safety Impact Dashboard</title>
+
+    <style>
+      /* — reset & body */
+      body {
+        margin: 0;
+        font-family: sans-serif;
+        line-height: 1.4;
+        background: #f9f9f9;
+      }
+
+      /* — site header: title + nav */
+      .site-header {
+        background: #222;
+        color: #fff;
+        padding: 1rem 2rem;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .site-header h1 {
+        margin: 0;
+        font-size: 1.75rem;
+      }
+      .site-header nav ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        gap: 1rem;
+      }
+      .site-header nav a {
+        color: #eee;
+        text-decoration: none;
+        font-size: 1rem;
+        padding: 0.5rem 1rem;
+      }
+      .site-header nav a.active,
+      .site-header nav a:hover {
+        background: #444;
+        border-radius: 4px;
+      }
+
+      /* — scene header */
+      .scene-header {
+        text-align: center;
+        padding: 1.5rem 1rem 0.5rem;
+      }
+      .scene-header h2 {
+        margin: 0;
+        font-size: 1.5rem;
+      }
+      .scene-header p {
+        margin: 0.5rem 0 1rem;
+        font-size: 1.1rem;
+        color: #555;
+      }
+
+      /* — chart container: center content */
+      #chart {
+        padding: 1rem;
+        display: flex;
+        justify-content: center;
+      }
+
+      /* — tooltip */
+      .tooltip {
+        font-size: 1rem;
+      }
+
+      /* — SVG font sizes */
+      svg text {
+        font-size: 14px;
+      }
+      svg .axis-label {
+        font-size: 16px;
+        font-weight: bold;
+      }
+      svg .label {
+        font-size: 14px;
+      }
+    </style>
   </head>
   <body>
+    <header class="site-header">
+      <h1>Waymo Safety Impact Dashboard</h1>
+      <nav>
+        <ul>
+          <li>
+            <a href="#" data-scene="collisionVsMiles" class="active"
+              >Collisions vs RO Miles</a
+            >
+          </li>
+          <li><a href="#" data-scene="scene2">Scene 2</a></li>
+          <li><a href="#" data-scene="scene3">Scene 3</a></li>
+        </ul>
+      </nav>
+    </header>
+
+    <section class="scene-header">
+      <h2>Scene 1: Collision Count vs RO Miles by Location</h2>
+      <p>
+        This scatter plot shows each city’s Rider-Only miles (in millions) on
+        the X-axis and total collisions on the Y-axis. Hover over a point to see
+        details.
+      </p>
+    </section>
+
     <div id="chart"></div>
+
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="main.js"></script>
+    <script>
+      // navigation handler
+      document.querySelectorAll('.site-header nav a').forEach((link) => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          document
+            .querySelectorAll('.site-header nav a')
+            .forEach((a) => a.classList.remove('active'));
+          link.classList.add('active');
+          const scene = link.dataset.scene;
+          sceneManager.show(scene, { selector: '#chart' });
+        });
+      });
+
+      // initial scene render
+      sceneManager.show('collisionVsMiles', { selector: '#chart' });
+    </script>
   </body>
 </html>
