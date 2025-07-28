@@ -87,7 +87,7 @@
           <li>
             <a href="#" data-scene="collisionsByType">Collisions by Type</a>
           </li>
-          <li><a href="#" data-scene="scene3">Scene 3</a></li>
+          <li><a href="#" data-scene="dimensionTrends">Dimension Trends</a></li>
         </ul>
       </nav>
     </header>
@@ -117,9 +117,10 @@
           description:
             'This chart shows collision counts by crash type. Select one or more locations to filter; multiple locations render a stacked bar chart.',
         },
-        scene3: {
-          title: 'Scene 3',
-          description: 'Description for Scene 3 goes here.',
+        dimensionTrends: {
+          title: 'Dimension Trends Over Time',
+          description:
+            'Explore how different crash dimensions (outcome, type, severity) evolve over time for a selected location.',
         },
       };
 
@@ -167,6 +168,15 @@
         // build config
         const config = {};
         if (scene === 'collisionsByType' && loc) config.initialLocation = loc;
+        if (scene === 'dimensionTrends') {
+          if (loc) config.initialLocation = loc;
+          const fromScene = params.get('fromScene');
+          if (fromScene) {
+            config.fromScene = fromScene;
+            config.fromLocation = loc;
+            config.initialDimension = 'crashType'; // Set to crashType when coming from collisionsByType
+          }
+        }
         // show scene
         sceneManager.show(scene, { selector: '#chart', config });
       })();
