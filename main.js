@@ -1159,3 +1159,17 @@ sceneManager.register(
     renderDimensionTrendsScene({ selector, config });
   }
 );
+
+// Show intro modal on page load
+const introModal = document.getElementById('intro-modal');
+const introClose = document.getElementById('intro-close');
+
+// Display it
+window.addEventListener('load', () => {
+  introModal.style.display = 'flex';
+});
+
+// Close handler
+introClose.addEventListener('click', () => {
+  introModal.style.display = 'none';
+});
