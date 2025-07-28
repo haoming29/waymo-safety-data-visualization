@@ -5,15 +5,12 @@
     <title>Waymo Safety Impact Dashboard</title>
 
     <style>
-      /* — reset & body */
       body {
         margin: 0;
         font-family: sans-serif;
         line-height: 1.4;
         background: #f9f9f9;
       }
-
-      /* — site header: title + nav */
       .site-header {
         background: #222;
         color: #fff;
@@ -44,8 +41,6 @@
         background: #444;
         border-radius: 4px;
       }
-
-      /* — scene header */
       .scene-header {
         text-align: center;
         padding: 1.5rem 1rem 0.5rem;
@@ -59,26 +54,20 @@
         font-size: 1.1rem;
         color: #555;
       }
-
-      /* — chart container: center content */
       #chart {
         padding: 1rem;
         display: flex;
         justify-content: center;
       }
-
-      /* — tooltip */
       .tooltip {
         font-size: 1rem;
       }
-
-      /* — SVG font sizes */
       svg text {
         font-size: 14px;
       }
       svg .axis-label {
         font-size: 16px;
-        font-weight: bold;
+        font-weight: normal;
       }
       svg .label {
         font-size: 14px;
@@ -92,21 +81,22 @@
         <ul>
           <li>
             <a href="#" data-scene="collisionVsMiles" class="active"
-              >Collisions vs RO Miles</a
+              >Collision vs RO Miles</a
             >
           </li>
-          <li><a href="#" data-scene="scene2">Scene 2</a></li>
+          <li>
+            <a href="#" data-scene="collisionsByType">Collisions by Type</a>
+          </li>
           <li><a href="#" data-scene="scene3">Scene 3</a></li>
         </ul>
       </nav>
     </header>
 
     <section class="scene-header">
-      <h2>Scene 1: Collision Count vs RO Miles by Location</h2>
+      <h2>Collision Count vs RO Miles by Location</h2>
       <p>
         This scatter plot shows each city’s Rider-Only miles (in millions) on
-        the X-axis and total collisions on the Y-axis. Hover over a point to see
-        details.
+        the X-axis and total collisions on the Y-axis. Hover for details.
       </p>
     </section>
 
@@ -115,21 +105,71 @@
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <script src="main.js"></script>
     <script>
-      // navigation handler
+      // Scene metadata
+      const sceneInfo = {
+        collisionVsMiles: {
+          title: 'Collision Count vs RO Miles by Location',
+          description:
+            'This scatter plot shows each city’s Rider-Only miles (in millions) on the X-axis and total collisions on the Y-axis. Hover for details.',
+        },
+        collisionsByType: {
+          title: 'Collisions by Crash Type',
+          description:
+            'This chart shows collision counts by crash type. Select one or more locations to filter; multiple locations render a stacked bar chart.',
+        },
+        scene3: {
+          title: 'Scene 3',
+          description: 'Description for Scene 3 goes here.',
+        },
+      };
+
       document.querySelectorAll('.site-header nav a').forEach((link) => {
         link.addEventListener('click', (e) => {
           e.preventDefault();
+          const scene = link.dataset.scene;
+          // update URL
+          const params = new URLSearchParams();
+          params.set('scene', scene);
+          window.history.pushState({}, '', `?${params.toString()}`);
+          // highlight active
           document
             .querySelectorAll('.site-header nav a')
             .forEach((a) => a.classList.remove('active'));
           link.classList.add('active');
-          const scene = link.dataset.scene;
-          sceneManager.show(scene, { selector: '#chart' });
+          // update header
+          const info = sceneInfo[scene];
+          document.querySelector('.scene-header h2').textContent = info.title;
+          document.querySelector('.scene-header p').textContent =
+            info.description;
+          // render scene
+          sceneManager.show(scene, { selector: '#chart', config: {} });
         });
       });
 
-      // initial scene render
-      sceneManager.show('collisionVsMiles', { selector: '#chart' });
+      // initial render
+      (function () {
+        const params = new URLSearchParams(window.location.search);
+        const scene = params.get('scene') || 'collisionVsMiles';
+        const loc = params.get('location');
+        // highlight nav
+        document
+          .querySelectorAll('.site-header nav a')
+          .forEach((a) => a.classList.remove('active'));
+        const initLink = document.querySelector(
+          `.site-header nav a[data-scene="${scene}"]`
+        );
+        if (initLink) initLink.classList.add('active');
+        // update header
+        const info = sceneInfo[scene];
+        document.querySelector('.scene-header h2').textContent = info.title;
+        document.querySelector('.scene-header p').textContent =
+          info.description;
+        // build config
+        const config = {};
+        if (scene === 'collisionsByType' && loc) config.initialLocation = loc;
+        // show scene
+        sceneManager.show(scene, { selector: '#chart', config });
+      })();
     </script>
   </body>
 </html>
