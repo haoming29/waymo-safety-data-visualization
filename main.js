@@ -867,6 +867,20 @@ async function renderDimensionTrendsScene({ selector, config }) {
       .nodes()
       .map((n) => n.value);
 
+    // Get all current category keys to detect if we're switching dimensions
+    const currentCategoryKeys = catDiv
+      .selectAll('input')
+      .nodes()
+      .map((n) => n.value);
+
+    const newCategoryKeys = series.map((s) => s.key);
+
+    // Check if any of the current categories match the new categories
+    // If none match, we're switching dimensions and should select all by default
+    const isDimensionSwitch =
+      currentCategoryKeys.length > 0 &&
+      !currentCategoryKeys.some((key) => newCategoryKeys.includes(key));
+
     // Clear and rebuild categories with total counts
     catDiv.selectAll('label').remove();
     series.forEach((s) => {
@@ -879,16 +893,18 @@ async function renderDimensionTrendsScene({ selector, config }) {
         .style('margin-bottom', '4px')
         .style('cursor', 'pointer');
 
-      // Check if this category was previously selected, or default to true for new categories
+      // Check if this category was previously selected, or default to true for new categories or dimension switches
       const shouldBeChecked =
-        currentSelections.length > 0 ? currentSelections.includes(s.key) : true;
+        isDimensionSwitch || currentSelections.length === 0
+          ? true
+          : currentSelections.includes(s.key);
 
       lbl
         .append('input')
         .attr('type', 'checkbox')
         .attr('value', s.key)
         .property('checked', shouldBeChecked)
-        .on('change', update);
+        .on('change', updateChart); // Changed to call updateChart instead of update
 
       lbl
         .append('div')
@@ -910,212 +926,233 @@ async function renderDimensionTrendsScene({ selector, config }) {
         .text(`(${totalCount})`);
     });
 
-    // Get selected categories
-    const selected = catDiv
-      .selectAll('input:checked')
-      .nodes()
-      .map((n) => n.value);
-    const dataSeries = series.filter((s) => selected.includes(s.key));
+    // Now update the chart with current selections
+    updateChart();
+  }
 
-    if (dataSeries.length === 0) return;
+  // Separate function to update just the chart based on current category selections
+  function updateChart() {
+    const loc = locSel.property('value');
+    const dim = dimSel.property('value');
+    const gran = granDiv.select('input[name="gran"]:checked').property('value');
 
-    // Clear SVG and redraw
-    svg.selectAll('*').remove();
+    // We need to get the current data again for the chart
+    loadDimensionTrendsData({
+      location: loc,
+      dimension: dim,
+      granularity: gran,
+    }).then(({ series, firstCollisionDate }) => {
+      // Define color scale
+      const color = d3
+        .scaleOrdinal()
+        .domain(series.map((s) => s.key))
+        .range(d3.schemeCategory10);
 
-    // scales
-    const dates =
-      dataSeries.length > 0 ? dataSeries[0].values.map((d) => d.date) : [];
-    const x = d3.scaleTime().domain(d3.extent(dates)).range([0, width]);
-    const y = d3
-      .scaleLinear()
-      .domain([
-        0,
-        d3.max(dataSeries.flatMap((s) => s.values.map((v) => v.count))),
-      ])
-      .nice()
-      .range([height, 0]);
+      // Get selected categories
+      const selected = catDiv
+        .selectAll('input:checked')
+        .nodes()
+        .map((n) => n.value);
+      const dataSeries = series.filter((s) => selected.includes(s.key));
 
-    // axes
-    svg
-      .append('g')
-      .attr('transform', `translate(0,${height})`)
-      .call(d3.axisBottom(x).ticks(6));
-    svg.append('g').call(d3.axisLeft(y).ticks(6));
+      if (dataSeries.length === 0) return;
 
-    // Add X axis label
-    svg
-      .append('text')
-      .attr('class', 'axis-label')
-      .attr('x', width / 2)
-      .attr('y', height + 35)
-      .style('text-anchor', 'middle')
-      .style('fill', '#666')
-      .text(gran === 'year' ? 'Year' : 'Month');
+      // Clear SVG and redraw
+      svg.selectAll('*').remove();
 
-    // Add Y axis label
-    svg
-      .append('text')
-      .attr('class', 'axis-label')
-      .attr('transform', 'rotate(-90)')
-      .attr('x', -height / 2)
-      .attr('y', -40)
-      .style('text-anchor', 'middle')
-      .style('fill', '#666')
-      .text('Count');
+      // scales
+      const dates =
+        dataSeries.length > 0 ? dataSeries[0].values.map((d) => d.date) : [];
+      const x = d3.scaleTime().domain(d3.extent(dates)).range([0, width]);
+      const y = d3
+        .scaleLinear()
+        .domain([
+          0,
+          d3.max(dataSeries.flatMap((s) => s.values.map((v) => v.count))),
+        ])
+        .nice()
+        .range([height, 0]);
 
-    // Add first collision annotation if available
-    if (firstCollisionDate) {
-      const firstCollisionX = x(firstCollisionDate);
-
-      // Only show annotation if the date is within the visible range
-      if (firstCollisionX >= 0 && firstCollisionX <= width) {
-        // Vertical line for first collision
-        svg
-          .append('line')
-          .attr('class', 'first-collision-line')
-          .attr('x1', firstCollisionX)
-          .attr('x2', firstCollisionX)
-          .attr('y1', 0)
-          .attr('y2', height)
-          .style('stroke', '#ff6b6b')
-          .style('stroke-width', 2)
-          .style('stroke-dasharray', '5,5')
-          .style('opacity', 0.7);
-
-        // Label for first collision
-        svg
-          .append('text')
-          .attr('class', 'first-collision-label')
-          .attr('x', firstCollisionX)
-          .attr('y', -10)
-          .style('text-anchor', 'middle')
-          .style('fill', '#ff6b6b')
-          .style('font-size', '12px')
-          .style('font-weight', 'bold')
-          .text('First Collision');
-      }
-    }
-
-    // lines (only for periods with data)
-    const lineGen = d3
-      .line()
-      .defined((d) => d.hasData) // Only draw line segments where there's data
-      .x((d) => x(d.date))
-      .y((d) => y(d.count));
-
-    svg
-      .selectAll('.line')
-      .data(dataSeries)
-      .join('path')
-      .attr('class', 'line')
-      .attr('fill', 'none')
-      .attr('stroke', (d) => color(d.key))
-      .attr('stroke-width', 2)
-      .attr('d', (d) => lineGen(d.values));
-
-    // circles for data points (only for periods with data)
-    dataSeries.forEach((s) => {
-      const dataWithValues = s.values.filter((d) => d.hasData);
+      // axes
       svg
-        .selectAll(`.dot-${s.key.replace(/\s+/g, '')}`)
-        .data(dataWithValues)
-        .join('circle')
-        .attr('class', `dot-${s.key.replace(/\s+/g, '')}`)
-        .attr('cx', (d) => x(d.date))
-        .attr('cy', (d) => y(d.count))
-        .attr('r', 4)
-        .attr('fill', color(s.key));
-    });
+        .append('g')
+        .attr('transform', `translate(0,${height})`)
+        .call(d3.axisBottom(x).ticks(6));
+      svg.append('g').call(d3.axisLeft(y).ticks(6));
 
-    // Create invisible overlay for mouse tracking
-    const overlay = svg
-      .append('rect')
-      .attr('class', 'overlay')
-      .attr('width', width)
-      .attr('height', height)
-      .style('fill', 'none')
-      .style('pointer-events', 'all');
+      // Add X axis label
+      svg
+        .append('text')
+        .attr('class', 'axis-label')
+        .attr('x', width / 2)
+        .attr('y', height + 35)
+        .style('text-anchor', 'middle')
+        .style('fill', '#666')
+        .text(gran === 'year' ? 'Year' : 'Month');
 
-    // Vertical line for tooltip
-    const verticalLine = svg
-      .append('line')
-      .attr('class', 'vertical-line')
-      .style('stroke', '#666')
-      .style('stroke-width', 1)
-      .style('stroke-dasharray', '3,3')
-      .style('opacity', 0);
+      // Add Y axis label
+      svg
+        .append('text')
+        .attr('class', 'axis-label')
+        .attr('transform', 'rotate(-90)')
+        .attr('x', -height / 2)
+        .attr('y', -40)
+        .style('text-anchor', 'middle')
+        .style('fill', '#666')
+        .text('Count');
 
-    // Mouse events for vertical tooltip
-    overlay
-      .on('mouseover', () => {
-        verticalLine.style('opacity', 1);
-        tooltip.style('opacity', 1);
-      })
-      .on('mouseout', () => {
-        verticalLine.style('opacity', 0);
-        tooltip.style('opacity', 0);
-      })
-      .on('mousemove', (event) => {
-        const [mouseX] = d3.pointer(event);
-        const xDate = x.invert(mouseX);
+      // Add first collision annotation if available
+      if (firstCollisionDate) {
+        const firstCollisionX = x(firstCollisionDate);
 
-        // Find closest date in data
-        const bisectDate = d3.bisector((d) => d.date).left;
-        let closestData = [];
-
-        dataSeries.forEach((s) => {
-          const i = bisectDate(s.values, xDate, 1);
-          const d0 = s.values[i - 1];
-          const d1 = s.values[i];
-          const d = d1 && xDate - d0.date > d1.date - xDate ? d1 : d0;
-          if (d && d.hasData) {
-            // Only include data points that actually have data
-            closestData.push({
-              series: s.key,
-              date: d.date,
-              count: d.count,
-              color: color(s.key),
-            });
-          }
-        });
-
-        if (closestData.length > 0) {
-          const xPos = x(closestData[0].date);
-          verticalLine
-            .attr('x1', xPos)
-            .attr('x2', xPos)
+        // Only show annotation if the date is within the visible range
+        if (firstCollisionX >= 0 && firstCollisionX <= width) {
+          // Vertical line for first collision
+          svg
+            .append('line')
+            .attr('class', 'first-collision-line')
+            .attr('x1', firstCollisionX)
+            .attr('x2', firstCollisionX)
             .attr('y1', 0)
-            .attr('y2', height);
+            .attr('y2', height)
+            .style('stroke', '#ff6b6b')
+            .style('stroke-width', 2)
+            .style('stroke-dasharray', '5,5')
+            .style('opacity', 0.7);
 
-          // Create tooltip content
-          const tooltipContent = closestData
-            .sort((a, b) => b.count - a.count)
-            .map(
-              (
-                d
-              ) => `<div style="display: flex; align-items: center; margin-bottom: 4px;">
-              <div style="width: 12px; height: 12px; background-color: ${d.color}; margin-right: 8px; border-radius: 2px;"></div>
-              <strong>${d.series}:</strong> ${d.count}
-            </div>`
-            )
-            .join('');
-
-          const dateStr = d3.timeFormat(gran === 'year' ? '%Y' : '%Y-%m')(
-            closestData[0].date
-          );
-
-          const [px, py] = d3.pointer(event, chartDiv.node());
-          tooltip
-            .html(
-              `<div style="margin-bottom: 8px;"><strong>${dateStr}</strong></div>${tooltipContent}`
-            )
-            .style('left', `${px + margin.left + 10}px`)
-            .style('top', `${py + margin.top - 150}px`);
+          // Label for first collision
+          svg
+            .append('text')
+            .attr('class', 'first-collision-label')
+            .attr('x', firstCollisionX)
+            .attr('y', -10)
+            .style('text-anchor', 'middle')
+            .style('fill', '#ff6b6b')
+            .style('font-size', '12px')
+            .style('font-weight', 'bold')
+            .text('First Collision');
         }
+      }
+
+      // lines (only for periods with data)
+      const lineGen = d3
+        .line()
+        .defined((d) => d.hasData) // Only draw line segments where there's data
+        .x((d) => x(d.date))
+        .y((d) => y(d.count));
+
+      svg
+        .selectAll('.line')
+        .data(dataSeries)
+        .join('path')
+        .attr('class', 'line')
+        .attr('fill', 'none')
+        .attr('stroke', (d) => color(d.key))
+        .attr('stroke-width', 2)
+        .attr('d', (d) => lineGen(d.values));
+
+      // circles for data points (only for periods with data)
+      dataSeries.forEach((s) => {
+        const dataWithValues = s.values.filter((d) => d.hasData);
+        svg
+          .selectAll(`.dot-${s.key.replace(/\s+/g, '')}`)
+          .data(dataWithValues)
+          .join('circle')
+          .attr('class', `dot-${s.key.replace(/\s+/g, '')}`)
+          .attr('cx', (d) => x(d.date))
+          .attr('cy', (d) => y(d.count))
+          .attr('r', 4)
+          .attr('fill', color(s.key));
       });
 
-    // Categories are now built and ready for user interaction
-  }
+      // Create invisible overlay for mouse tracking
+      const overlay = svg
+        .append('rect')
+        .attr('class', 'overlay')
+        .attr('width', width)
+        .attr('height', height)
+        .style('fill', 'none')
+        .style('pointer-events', 'all');
+
+      // Vertical line for tooltip
+      const verticalLine = svg
+        .append('line')
+        .attr('class', 'vertical-line')
+        .style('stroke', '#666')
+        .style('stroke-width', 1)
+        .style('stroke-dasharray', '3,3')
+        .style('opacity', 0);
+
+      // Mouse events for vertical tooltip
+      overlay
+        .on('mouseover', () => {
+          verticalLine.style('opacity', 1);
+          tooltip.style('opacity', 1);
+        })
+        .on('mouseout', () => {
+          verticalLine.style('opacity', 0);
+          tooltip.style('opacity', 0);
+        })
+        .on('mousemove', (event) => {
+          const [mouseX] = d3.pointer(event);
+          const xDate = x.invert(mouseX);
+
+          // Find closest date in data
+          const bisectDate = d3.bisector((d) => d.date).left;
+          let closestData = [];
+
+          dataSeries.forEach((s) => {
+            const i = bisectDate(s.values, xDate, 1);
+            const d0 = s.values[i - 1];
+            const d1 = s.values[i];
+            const d = d1 && xDate - d0.date > d1.date - xDate ? d1 : d0;
+            if (d && d.hasData) {
+              // Only include data points that actually have data
+              closestData.push({
+                series: s.key,
+                date: d.date,
+                count: d.count,
+                color: color(s.key),
+              });
+            }
+          });
+
+          if (closestData.length > 0) {
+            const xPos = x(closestData[0].date);
+            verticalLine
+              .attr('x1', xPos)
+              .attr('x2', xPos)
+              .attr('y1', 0)
+              .attr('y2', height);
+
+            // Create tooltip content
+            const tooltipContent = closestData
+              .sort((a, b) => b.count - a.count)
+              .map(
+                (
+                  d
+                ) => `<div style="display: flex; align-items: center; margin-bottom: 4px;">
+                <div style="width: 12px; height: 12px; background-color: ${d.color}; margin-right: 8px; border-radius: 2px;"></div>
+                <strong>${d.series}:</strong> ${d.count}
+              </div>`
+              )
+              .join('');
+
+            const dateStr = d3.timeFormat(gran === 'year' ? '%Y' : '%Y-%m')(
+              closestData[0].date
+            );
+
+            const [px, py] = d3.pointer(event, chartDiv.node());
+            tooltip
+              .html(
+                `<div style="margin-bottom: 8px;"><strong>${dateStr}</strong></div>${tooltipContent}`
+              )
+              .style('left', `${px + margin.left + 10}px`)
+              .style('top', `${py + margin.top - 150}px`);
+          }
+        });
+    }); // Close the .then() block for loadDimensionTrendsData
+  } // Close the updateChart function
 
   // attach controls
   locSel.on('change', update);
